@@ -1,52 +1,21 @@
 import os
 import pandas as pd
-import sqlite3
 from binance.client import Client
 from datetime import datetime
-from typing import Literal
+from EDA import load_and_clean_data, visualize_features
 
-# ===== Binance API Client =====
-# Public data only -> keys not required
+# Binance API credentials (read from env vars for security)
+# BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
+# BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET")
+
 client = Client(api_key=None, api_secret=None)
 
-# ===== Config =====
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
-os.makedirs(DATA_DIR, exist_ok=True)
-
-DB_PATH = os.path.join(DATA_DIR, "btc_data.db")
-
-# ===== Functions =====
-def get_historical_data(
-    symbol: str = "BTCUSDT",
-    interval: Literal["1m", "1h", "1d"] = "1d",
-    limit: int = 1000,
-    save_csv: bool = True,
-    save_sqlite: bool = True
-) -> pd.DataFrame:
+def fetch_historical_data(symbol="BTCUSDT", interval='1h', start_str="1 Jan 2022"):
     """
-    Download historical OHLCV data from Binance.
-
-    Args:
-        symbol: Trading pair, default BTCUSDT.
-        interval: Candle interval (1m, 1h, 1d).
-        limit: Number of data points (max 1000 per request).
-        save_csv: Save to CSV file.
-        save_sqlite: Save to SQLite DB.
-
-    Returns:
-        DataFrame with historical data.
+    Fetch historical BTC price data from Binance API.
+    Returns a pandas DataFrame.
     """
-    # Map to Binance interval constants
-    interval_map = {
-        "1m": Client.KLINE_INTERVAL_1MINUTE,
-        "1h": Client.KLINE_INTERVAL_1HOUR,
-        "1d": Client.KLINE_INTERVAL_1DAY
-    }
-    if interval not in interval_map:
-        raise ValueError("Interval must be one of '1m', '1h', '1d'")
-
-    print(f"Fetching historical data: {symbol}, {interval}, limit={limit}")
-    klines = client.get_klines(symbol=symbol, interval=interval_map[interval], limit=limit)
+    klines = client.get_historical_klines(symbol, interval, start_str)
 
     df = pd.DataFrame(klines, columns=[
         "timestamp", "open", "high", "low", "close", "volume",
@@ -54,47 +23,40 @@ def get_historical_data(
         "taker_buy_base", "taker_buy_quote", "ignore"
     ])
 
-    # Format data
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-    df[["open", "high", "low", "close", "volume"]] = df[["open", "high", "low", "close", "volume"]].astype(float)
+    # Convert timestamp to readable date
+    # df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+    # df["close_time"] = pd.to_datetime(df["close_time"], unit="ms")
 
-    # Save to CSV
-    if save_csv:
-        csv_path = os.path.join(DATA_DIR, f"{symbol}_{interval}_historical.csv")
-        df.to_csv(csv_path, index=False)
-        print(f"Saved CSV: {csv_path}")
+    # Convert numeric columns to float
+    numeric_cols = ["open", "high", "low", "close", "volume",
+                    "quote_asset_volume", "taker_buy_base", "taker_buy_quote"]
+    df[numeric_cols] = df[numeric_cols].astype(float)
 
-    # Save to SQLite
-    if save_sqlite:
-        conn = sqlite3.connect(DB_PATH)
-        table_name = f"{symbol.lower()}_{interval}"
-        df.to_sql(table_name, conn, if_exists="replace", index=False)
-        conn.close()
-        print(f"Saved to SQLite table: {table_name}")
+    df["num_trades"] = df["num_trades"].astype(int)
 
     return df
 
+def save_to_csv(df, path):
+    """Save DataFrame to CSV."""
+    df.to_csv(path, index=False)
+    print(f"Saved: {path}")
 
-def get_latest_price(symbol: str = "BTCUSDT") -> float:
-    """
-    Get the latest price for the given symbol.
+def main():
+    raw_csv_path = "data/raw_btc_data.csv"
+    clean_csv_path = "data/clean_btc_data.csv"
 
-    Args:
-        symbol: Trading pair, default BTCUSDT.
+    os.makedirs("data", exist_ok=True)
 
-    Returns:
-        Latest price as float.
-    """
-    ticker = client.get_symbol_ticker(symbol=symbol)
-    return float(ticker["price"])
+    print("Fetching historical BTC data...")
+    df_raw = fetch_historical_data()
+    save_to_csv(df_raw, raw_csv_path)
 
+    print("Cleaning data...")
+    df_clean = load_and_clean_data(raw_csv_path)
+    save_to_csv(df_clean, clean_csv_path)
 
-# ===== Script usage example =====
+    print("Visualizing important features...")
+    visualize_features(df_clean)
+
 if __name__ == "__main__":
-    # Download last 1000 daily candles
-    df_hist = get_historical_data(interval="1d", limit=1000)
-    print(df_hist.head())
-
-    # Fetch latest price
-    latest_price = get_latest_price()
-    print(f"Latest BTC/USDT price: {latest_price}")
+    main()
