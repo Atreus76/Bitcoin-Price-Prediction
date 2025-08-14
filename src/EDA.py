@@ -62,38 +62,63 @@ def describe_data(df: pd.DataFrame):
     print("\n===== Statistics =====")
     print(df.describe())
 
+def visualize_features(df, target_col='close'):
+    """Visualize key engineered features for time series data (auto-detect available columns)."""
 
-def visualize_features(df: pd.DataFrame):
-    """
-    Generate key visualizations for BTC data.
-    """
-    plt.style.use("seaborn-v0_8-darkgrid")
-    plt.figure(figsize=(15, 10))
+    # Helper: safe plotting
+    def safe_plot(condition, plot_func):
+        try:
+            if condition:
+                plot_func()
+        except Exception as e:
+            print(f"Skipping plot due to error: {e}")
 
-    # Plot Closing Price over Time
-    plt.subplot(3, 1, 1)
-    plt.plot(df['timestamp'], df['close'], label='Close Price', color='blue')
-    plt.title("BTC Closing Price Over Time")
-    plt.xlabel("Date")
-    plt.ylabel("Price (USDT)")
-    plt.legend()
+    # 1. Distribution of returns
+    safe_plot('return' in df.columns, lambda: (
+        plt.figure(figsize=(8,4)),
+        sns.histplot(df['return'].dropna(), bins=100, kde=True),
+        plt.title('Distribution of Returns'),
+        plt.xlabel('Return'),
+        plt.ylabel('Frequency'),
+        plt.show()
+    ))
 
-    # Correlation Heatmap
-    plt.subplot(3, 1, 2)
-    numeric_df = df.select_dtypes(include=[np.number])
-    corr_matrix = numeric_df.corr()
-    sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", fmt=".2f")
-    plt.title("Feature Correlation Heatmap")
+    # 2. Distribution of log returns
+    safe_plot('log_return' in df.columns, lambda: (
+        plt.figure(figsize=(8,4)),
+        sns.histplot(df['log_return'].dropna(), bins=100, kde=True),
+        plt.title('Distribution of Log Returns'),
+        plt.xlabel('Log Return'),
+        plt.ylabel('Frequency'),
+        plt.show()
+    ))
 
-    # Volume vs Price Scatter
-    plt.subplot(3, 1, 3)
-    plt.scatter(df['volume'], df['close'], alpha=0.3, color='green')
-    plt.title("Volume vs Closing Price")
-    plt.xlabel("Volume")
-    plt.ylabel("Close Price")
+    # 3. Volatility by hour
+    safe_plot(all(col in df.columns for col in ['hour', 'return']), lambda: (
+        plt.figure(figsize=(8,4)),
+        sns.boxplot(x='hour', y='return', data=df),
+        plt.title('Return Volatility by Hour'),
+        plt.show()
+    ))
 
-    plt.tight_layout()
-    plt.show()
+    # 4. Volatility by day of week
+    safe_plot(all(col in df.columns for col in ['day_of_week', 'return']), lambda: (
+        plt.figure(figsize=(8,4)),
+        sns.boxplot(x='day_of_week', y='return', data=df),
+        plt.title('Return Volatility by Day of Week'),
+        plt.show()
+    ))
+
+    # 5. Correlation heatmap
+    safe_plot(target_col in df.columns, lambda: (
+        plt.figure(figsize=(10,6)),
+        sns.heatmap(
+            df.corr(numeric_only=True)[[target_col]].sort_values(by=target_col, ascending=False),
+            annot=True, cmap='coolwarm', fmt=".2f"
+        ),
+        plt.title(f'Correlation with {target_col}'),
+        plt.show()
+    ))
 
 
 # Example usage
