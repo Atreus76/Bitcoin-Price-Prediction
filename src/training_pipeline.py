@@ -63,6 +63,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.preprocessing import StandardScaler
 
 def train_models(df, target_col='close'):
     
@@ -82,10 +83,27 @@ def train_models(df, target_col='close'):
 
     X_train, y_train = train[feature_cols], train['target']
     X_test, y_test = test[feature_cols], test['target']
+    print(X_test.head())
+    print(y_test.head())
+    
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+    
+    # Check the results of naive model
+    preds = X_test['close'].shift(-1).fillna(y_test.iloc[0])
+    rmse = np.sqrt(mean_squared_error(y_test, preds))
+    mae = mean_absolute_error(y_test, preds)
+    mape = np.mean(np.abs((y_test - preds) / y_test)) * 100
+    
+    print(f"\n--- Naive ---")
+    print(f"RMSE: {rmse:.4f}")
+    print(f"MAE: {mae:.4f}")
+    print(f"MAPE: {mape:.2f}%")
 
     def evaluate_model(model, name):
-        model.fit(X_train, y_train)
-        preds = model.predict(X_test)
+        model.fit(X_train_scaled, y_train)
+        preds = model.predict(X_test_scaled)
 
         rmse = np.sqrt(mean_squared_error(y_test, preds))
         mae = mean_absolute_error(y_test, preds)
@@ -114,7 +132,7 @@ def train_models(df, target_col='close'):
 
     # XGBoost (tuned)
     xgb = XGBRegressor(
-        n_estimators=500,
+        n_estimators=5000,
         max_depth=4,
         learning_rate=0.05,
         subsample=0.8,
@@ -134,7 +152,7 @@ def train_models(df, target_col='close'):
         plt.barh(importance_df["Feature"], importance_df["Importance"])
         plt.gca().invert_yaxis()
         plt.title(f"{name} Feature Importance")
-        plt.show()
+        # plt.show()
 
     return lr_model, rf_model, xgb_model
 
